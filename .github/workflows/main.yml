@@ -31,4 +31,4 @@ jobs:
           cd util/
           pip3 install -r requirements.txt
           cd test/
-          pytest -v
+          python3 -m pytest -v
