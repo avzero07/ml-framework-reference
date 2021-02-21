@@ -1,6 +1,6 @@
 import os
 import sys
-sys.path.insert(0,os.path.join('..','util/'))
+sys.path.insert(0,os.path.join('..','util'))
 import read_idx as rd
 
 sys.path.insert(0,os.path.join('..','util','test'))
@@ -65,7 +65,7 @@ def main():
     # Load Data
     data_path = os.path.join("..","data","mnist")
     X_train = process_idx_file("train-images-idx3-ubyte.gz",data_path)
-    y_train = process_idx_file("train-labels-idx1-ubyte",data_path)
+    y_train = process_idx_file("train-labels-idx1-ubyte.gz",data_path)
 
     X_test = process_idx_file("t10k-images-idx3-ubyte.gz",data_path)
     y_test = process_idx_file("t10k-labels-idx1-ubyte.gz",data_path)
