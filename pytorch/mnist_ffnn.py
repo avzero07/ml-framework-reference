@@ -1,8 +1,9 @@
+import os
 import sys
-sys.path.insert(0,"../util/")
+sys.path.insert(0,os.path.join('..','util/'))
 import read_idx as rd
 
-sys.path.insert(0,"../util/test")
+sys.path.insert(0,os.path.join('..','util','test'))
 from test_read_idx import gunzip_to_dir
 
 import tempfile
@@ -21,7 +22,10 @@ def process_idx_file(ip_file_name,ip_file_path):
     
     with tempfile.TemporaryDirectory() as dirpath:
         file_to_read_full_path = gunzip_to_dir(ip_file_name,ip_file_path,dirpath)
-        idx_data = rd.get_data(file_to_read_full_path,)
+        metadata = rd.get_metadata(file_to_read_full_path)
+        idx_data = rd.get_data(file_to_read_full_path,metadata)
+
+    return torch.from_numpy(idx_data)
 
 class FFNet(nn.Module):
     
@@ -59,8 +63,17 @@ class FFNet(nn.Module):
 
 def main():
     # Load Data
-    
-    X_train = get_data("../")
+    data_path = os.path.join("..","data","mnist")
+    X_train = process_idx_file("train-images-idx3-ubyte.gz",data_path)
+    y_train = process_idx_file("train-labels-idx1-ubyte",data_path)
+
+    X_test = process_idx_file("t10k-images-idx3-ubyte.gz",data_path)
+    y_test = process_idx_file("t10k-labels-idx1-ubyte.gz",data_path)
+
+    print(X_train.size())
+    print(y_train.size())
+    print(X_test.size())
+    print(y_test.size())
 
     # Init Net
     net = FFNet()
