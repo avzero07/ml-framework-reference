@@ -1,15 +1,17 @@
 '''
 Tests for Functions in read_idx.py
 '''
+import os
 import sys
-sys.path.append('../')
+sys.path.append(os.path.join(".."))
+
+import gzip
+import shutil
 
 import pytest
 import read_idx as rd
 import numpy as np
 import tempfile
-import subprocess
-
 
 @pytest.fixture(scope="module",autouse=True)
 def print_new_line():
@@ -23,16 +25,16 @@ Helper Functions
 
 def gunzip_to_dir(ip_file_name,ip_file_path,op_file_path):
     # Copy GZ to Temp Directory
-    op = subprocess.run(['cp',''.join([ip_file_path,ip_file_name]),''.join([op_file_path,'/'])])
-    if op.returncode:
-        pytest.fail("Unable to Copy {} to temp directory {}".format(ip_file_name,op_file_path))
 
-    # Extract File in Temp Directory
-    op = subprocess.run(['gunzip',''.join([op_file_path,'/',ip_file_name])],stderr=subprocess.PIPE,stdout=subprocess.PIPE)
-    if op.returncode:
-        pytest.fail("Received errorcode {} when trying to uncompress {}".format(op.returncode,ip_file_path))
+    path_to_extracted_file = os.path.join(op_file_path,ip_file_name[:-3])
 
-    path_to_extracted_file = ''.join([op_file_path,'/',ip_file_name[:-3]])
+    try:
+        with gzip.open(os.path.join(ip_file_path,ip_file_name),'rb') as file_in:
+            with open(path_to_extracted_file,'wb') as file_out:
+                shutil.copyfileobj(file_in,file_out)
+
+    except Exception as e:
+        pytest.fail("Error When Attempting to Uncompress and Copy\n{}".format(e))
 
     return path_to_extracted_file
 
@@ -44,10 +46,10 @@ Begin Tests
 
 @pytest.mark.parametrize(
         "file_name,file_path,true_metadata",
-        [("train-images-idx3-ubyte.gz","../../data/mnist/",('B',3,16,(60000,28,28))),
-         ("train-labels-idx1-ubyte.gz","../../data/mnist/",('B',1,8,(60000,))),
-         ("t10k-images-idx3-ubyte.gz","../../data/mnist/",('B',3,16,(10000,28,28))),
-         ("t10k-labels-idx1-ubyte.gz","../../data/mnist/",('B',1,8,(10000,)))]
+        [("train-images-idx3-ubyte.gz",os.path.join("..","..","data","mnist"),('B',3,16,(60000,28,28))),
+         ("train-labels-idx1-ubyte.gz",os.path.join("..","..","data","mnist"),('B',1,8,(60000,))),
+         ("t10k-images-idx3-ubyte.gz",os.path.join("..","..","data","mnist"),('B',3,16,(10000,28,28))),
+         ("t10k-labels-idx1-ubyte.gz",os.path.join("..","..","data","mnist"),('B',1,8,(10000,)))]
         )
 def test_magic_number_parsing(file_name,file_path,true_metadata):
 
@@ -61,7 +63,7 @@ def test_magic_number_parsing(file_name,file_path,true_metadata):
 def test_get_data_lecun_idx_matrix(debug=False):
 
     file_name = "train-images-idx3-ubyte.gz"
-    file_path = "../../data/mnist/"
+    file_path = os.path.join("..","..","data","mnist")
 
     with tempfile.TemporaryDirectory() as dirpath:
         file_to_read_full_path = gunzip_to_dir(file_name,file_path,dirpath)
@@ -80,7 +82,7 @@ def test_get_data_lecun_idx_matrix(debug=False):
 def test_get_data_lecun_idx_vector(debug=False):
 
     file_name = "train-labels-idx1-ubyte.gz"
-    file_path = "../../data/mnist/"
+    file_path = os.path.join("..","..","data","mnist")
 
     with tempfile.TemporaryDirectory() as dirpath:
         file_to_read_full_path = gunzip_to_dir(file_name,file_path,dirpath)
