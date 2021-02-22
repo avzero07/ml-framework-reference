@@ -25,7 +25,7 @@ jobs:
         
         - os: windows-latest
         
-        - os: mac-os-latest
+        - os: macos-latest
 
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
