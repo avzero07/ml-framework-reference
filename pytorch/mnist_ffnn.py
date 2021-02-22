@@ -13,25 +13,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-# Helper Functions
-
-'''
-Extract a GZ Datastore, read contents
-and return a tensor.
-'''
-def process_idx_file(ip_file_name,ip_file_path,is_label=False):
-    
-    with tempfile.TemporaryDirectory() as dirpath:
-        file_to_read_full_path = gunzip_to_dir(ip_file_name,ip_file_path,dirpath)
-        metadata = rd.get_metadata(file_to_read_full_path)
-        idx_data = rd.get_data(file_to_read_full_path,metadata)
-
-    if is_label:
-        ret_tensor = torch.tensor(idx_data,dtype=torch.long)
-    else:
-        ret_tensor = torch.tensor(idx_data,dtype=torch.float)
-    return ret_tensor
-
 class FFNet(nn.Module):
     
     def __init__(self):
@@ -82,6 +63,23 @@ def predict_mnist(X,y,net):
     op = net(X)
     loss = net.criterion(op,y)
     print("Loss Over Test Data = {:.2f}".format(loss.item()*100))
+
+'''
+Extract a GZ Datastore, read contents
+and return a tensor.
+'''
+def process_idx_file(ip_file_name,ip_file_path,is_label=False):
+    
+    with tempfile.TemporaryDirectory() as dirpath:
+        file_to_read_full_path = gunzip_to_dir(ip_file_name,ip_file_path,dirpath)
+        metadata = rd.get_metadata(file_to_read_full_path)
+        idx_data = rd.get_data(file_to_read_full_path,metadata)
+
+    if is_label:
+        ret_tensor = torch.tensor(idx_data,dtype=torch.long)
+    else:
+        ret_tensor = torch.tensor(idx_data,dtype=torch.float)
+    return ret_tensor
 
 '''
 =====
