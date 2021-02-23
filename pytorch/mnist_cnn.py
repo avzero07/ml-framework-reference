@@ -137,6 +137,7 @@ def main():
     # Initial Predictions on Test Data
     print_h_bar(20)
     # Start Training
+    net.validate_net(test_loader,device)
     for epoch in range(10):
         net.train_net(train_loader,epoch,device)
         net.validate_net(test_loader,device)
