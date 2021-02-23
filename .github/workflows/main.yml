@@ -50,6 +50,5 @@ jobs:
           cd pytorch
           pip3 install -r requirements.txt
           cd ..
-          cd data
-          cd mnist
+          cd data/mnist/test
           python3 -m pytest -v
