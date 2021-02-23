@@ -14,8 +14,11 @@ class MNISTDataset(torch.utils.data.Dataset):
 
     def __init__(self,path_to_image_store,path_to_labels,transform=None):
         # Load the Data
-        self.image_data = rd.get_data(path_to_image_store)
-        self.label_data = rd.get_data(path_to_labels)
+        im_metadata = rd.get_metadata(path_to_image_store)
+        lb_metadata = rd.get_metadata(path_to_labels)
+
+        self.image_data = rd.get_data(path_to_image_store,im_metadata)
+        self.label_data = rd.get_data(path_to_labels,lb_metadata)
         
         # Convert to Tensors
         self.image_data = torch.tensor(self.image_data,dtype=torch.float)
@@ -24,10 +27,10 @@ class MNISTDataset(torch.utils.data.Dataset):
         # Fix Dimensions of Images
         self.image_data = self.image_data.unsqueeze(1)
 
-        if self.image_data.size(0) != self.label_data(0):
+        if self.image_data.size(0) != self.label_data.size(0):
             raise MismatchedDataError("len(Images) != len(labels). Check loaded data!")
 
-        slef.transform = transform
+        self.transform = transform
 
     def __len__(self):
         return self.label_data.size(0)
@@ -42,7 +45,7 @@ class MNISTDataset(torch.utils.data.Dataset):
         if self.transform:
             print("Transforms are Unsupported at this time!")
     
-    return sample
+        return sample
 
 
 class MismatchedDataError(Exception):
