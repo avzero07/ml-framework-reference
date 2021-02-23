@@ -1,4 +1,4 @@
-name: util-test-workflow
+name: test-workflow
 
 # Controls when the action will run. 
 on:
@@ -43,4 +43,12 @@ jobs:
           cd util/
           pip3 install -r requirements.txt
           cd test/
+          python3 -m pytest -v
+
+      - name: Run Data Tests
+        run: |
+          cd pytorch
+          pip3 install -r requirements.txt
+          cd ..
+          cd data/mnist/test
           python3 -m pytest -v
