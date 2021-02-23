@@ -5,6 +5,8 @@ import read_idx as rd
 
 sys.path.insert(0,os.path.join('..','util','test'))
 from test_read_idx import gunzip_to_dir
+sys.path.insert(0,os.path.join('..','data','mnist'))
+from mnist_dataset import MNISTDataset, MismatchedDataError
 
 import tempfile
 
@@ -30,7 +32,8 @@ class CNNNet(nn.Module):
     def forward(self,X):
         X = self.conv1(X)
         X = F.relu(X)
-        X = F.relu(self.conv2(X))
+        X = self.conv2(X)
+        X = F.relu(X)
         X = F.max_pool2d(X,2)
         X = self.dropout1(X)
         X = torch.flatten(X,1)
@@ -41,79 +44,43 @@ class CNNNet(nn.Module):
         output = F.log_softmax(X,dim=1)
         return output
 
-    def train(self,X,y,batch_ratio=200,epoch_count=10):
-        # Split to Batches
-        batch_size = int(X.size()[0]/batch_ratio)
-        batch_offset = 0
-        for ep in range(epoch_count):
-            total = 0
-            correct = 0
-            while(batch_offset<X.size()[0]):
-                train_batch_x = X[batch_offset:batch_offset+batch_size]
-                train_batch_y = y[batch_offset:batch_offset+batch_size]
-                
-                if torch.cuda.is_available():
-                    train_batch_x = train_batch_x.to('cuda')
-                    train_batch_y = train_batch_y.to('cuda')
+    def train_net(self,dataset_loader,epoch_count,device="cuda"):
+        self.train()
+        for batch_idx, sample_dict in enumerate(dataset_loader):
+            data = sample_dict['image']
+            target = sample_dict['label']
+            data, target = data.to(device), target.to(device)
+            self.optimizer.zero_grad()
+            output = self(data)
+            loss = F.nll_loss(output, target)
+            loss.backward()
+            self.optimizer.step()
+            if batch_idx % 10 == 0:
+                print('Train Epoch: {} [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+                    epoch_count, batch_idx * len(data), len(dataset_loader.dataset),
+                    100. * batch_idx / len(dataset_loader), loss.item()))
 
-                # Forward Pass
-                out = self(train_batch_x)
-                # Compute Loss
-                loss = F.nll_loss(out,train_batch_y)
-                # BackProp
-                self.optimizer.zero_grad() # Call the optimizer instead of net.param
-                loss.backward()
+    def validate_net(self,dataset_loader,device="cuda"):
+        # Make Network Ready for Test
+        self.eval()
+        test_loss = 0
+        correct = 0
 
-                # Use Built-in Optimizerr 
-                self.optimizer.step() # Does Weight Update
-               
-                # Calculate Batch Score
-                batch_score = compute_batch_score(train_batch_y,out)
-                total+=batch_score[1]
-                correct+=batch_score[0]
-                
-                batch_offset+=batch_size
-                #print("batch_offset = {}".format(batch_offset))
-            
-            print_training_update(ep,loss,epoch_interval=(epoch_count/5))
-            print("Epoch {} : Accuracy = {:.2f}%".format(ep,(100*(correct/total))))
-            batch_offset = 0
+        with torch.no_grad():
+            for sample_dict in dataset_loader:
+                data = sample_dict['image']
+                target = sample_dict['label']
+                data, target = data.to(device), target.to(device)
+                output = self(data)
+                test_loss += F.nll_loss(output, target, reduction="sum").item()
+                pred = output.argmax(dim=1, keepdim=True)
+                correct += pred.eq(target.view_as(pred)).sum().item()
 
-    def validate(self,X,y,batch_ratio=200,epoch_count=10):
-        # Split to Batches
-        batch_size = int(X.size()[0]/batch_ratio)
-        batch_offset = 0
+        test_loss /= len(dataset_loader.dataset)
 
-        for ep in range(epoch_count):
-            total = 0
-            correct = 0
-            with torch.no_grad():
-                while(batch_offset<X.size()[0]):
-                    train_batch_x = X[batch_offset:batch_offset+batch_size]
-                    train_batch_y = y[batch_offset:batch_offset+batch_size]
-                    
-                    if torch.cuda.is_available():
-                        train_batch_x = train_batch_x.to('cuda')
-                        train_batch_y = train_batch_y.to('cuda')
-
-                    # Forward Pass
-                    out = self(train_batch_x)
-                    # Compute Loss
-                    loss = F.nll_loss(out,train_batch_y)
-               
-                    # Calculate Batch Score
-                    batch_score = compute_batch_score(train_batch_y,out)
-                    total+=batch_score[1]
-                    correct+=batch_score[0]
-                
-                    batch_offset+=batch_size
-                    #print("batch_offset = {}".format(batch_offset))
-            
-            print_training_update(ep,loss,epoch_interval=(epoch_count/5))
-            print("Epoch {} : Accuracy = {:.2f}%".format(ep,(100*(correct/total))))
-            batch_offset = 0
-
-        return 
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
+                test_loss, correct, len(dataset_loader.dataset),
+                100. * correct / len(dataset_loader.dataset)))
 
 '''
 =================
@@ -126,38 +93,19 @@ def print_tensor_details(tensor,descr):
 def print_h_bar(count):
     print("="*count)
 
-def print_training_update(ep_count,loss,epoch_interval=5):
-    if ep_count%epoch_interval == 0:
-        print("Epoch {} : Loss = {:.2f}".format(ep_count,(loss.item())))
-
-def predict_mnist(X,y,net):
-    op = net.validate(X,y)
-    loss = F.nll_loss(op,y)
-    print("Loss Over Test Data = {:.2f}".format(loss.item()))
-
-def compute_batch_score(y,y_pred):
-    predicted = torch.max(y_pred.data,1)[0]
-    correct = (predicted == y).sum().item()
-    total = y.size(0)
-
-    return correct, total
-
 '''
 Extract a GZ Datastore, read contents
-and return a tensor.
+and returns a dataset object.
 '''
-def process_idx_file(ip_file_name,ip_file_path,is_label=False):
+def load_dataset(image_file_name,label_file_name,file_path):
     
     with tempfile.TemporaryDirectory() as dirpath:
-        file_to_read_full_path = gunzip_to_dir(ip_file_name,ip_file_path,dirpath)
-        metadata = rd.get_metadata(file_to_read_full_path)
-        idx_data = rd.get_data(file_to_read_full_path,metadata)
+        image_file_to_read_full_path = gunzip_to_dir(image_file_name,file_path,dirpath)
+        label_file_to_read_full_path = gunzip_to_dir(label_file_name,file_path,dirpath)
+    
+        dataset = MNISTDataset(image_file_to_read_full_path,label_file_to_read_full_path)
 
-    if is_label:
-        ret_tensor = torch.tensor(idx_data,dtype=torch.long)
-    else:
-        ret_tensor = torch.tensor(idx_data,dtype=torch.float)
-    return ret_tensor
+    return dataset
 
 '''
 =====
@@ -169,48 +117,30 @@ def main():
 
     # Load Data
     data_path = os.path.join("..","data","mnist")
-    X_train = process_idx_file("train-images-idx3-ubyte.gz",data_path)
-    y_train = process_idx_file("train-labels-idx1-ubyte.gz",data_path,is_label=True)
-    
-    X_test = process_idx_file("t10k-images-idx3-ubyte.gz",data_path)
-    y_test = process_idx_file("t10k-labels-idx1-ubyte.gz",data_path,is_label=True)
+    train_dataset = load_dataset("train-images-idx3-ubyte.gz","train-labels-idx1-ubyte.gz",data_path)
+    test_dataset = load_dataset("t10k-images-idx3-ubyte.gz","t10k-labels-idx1-ubyte.gz",data_path)
+
+    # Use data loader with
+    train_loader = torch.utils.data.DataLoader(train_dataset,batch_size=1000)
+    test_loader = torch.utils.data.DataLoader(test_dataset,batch_size=1000)
 
     # Init Net
     net = CNNNet()
 
-    # Fix Dimensions
-    '''
-    Conv Layer Expects the Input to Be
-    [num_samples x num_channels x row x col]
-    '''
-    X_train = X_train.unsqueeze(1)
-    X_test = X_test.unsqueeze(1)
-
-    # Move Data to GPU
+    # Move Network to GPU
     if torch.cuda.is_available():
-        to_gpu = True
-        #X_train = X_train.to('cuda')
-        print_tensor_details(X_train,'X_train')
-        #y_train = y_train.to('cuda')
-        print_tensor_details(y_train,'y_train')
-        #X_test = X_test.to('cuda')
-        print_tensor_details(X_test,'X_test')
-        #y_test = y_test.to('cuda')
-        print_tensor_details(y_test,'y_test')
-        # Move Net to GPU
-        net = net.to('cuda')
+        device = 'cuda'
+        net = net.to(device)
+    else:
+        device = 'cpu'
 
     # Initial Predictions on Test Data
     print_h_bar(20)
-    predict_mnist(X_test,y_test,net)
-    print_h_bar(20)
-
     # Start Training
-    net.train(X_train,y_train,epoch_count=10) 
-
+    for epoch in range(10):
+        net.train_net(train_loader,epoch,device)
+        net.validate_net(test_loader,device)
     # Final Predictions on Test Data
-    print_h_bar(20)
-    predict_mnist(X_test,y_test,net)
     print_h_bar(20)
 
 if __name__ == "__main__":
